@@ -9,7 +9,6 @@ const SPEC_LABEL_MAP: Record<string, ExtractedPart['type']> = {
   'storage': 'storage', 'hard disk': 'storage', 'hard drive': 'storage',
   'motherboard': 'motherboard',
   'wattage': 'psu', 'power supply': 'psu',
-  'standing screen display size': 'case',
   'cooling': 'cooling',
 }
 

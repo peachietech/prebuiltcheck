@@ -8,7 +8,7 @@ const SPEC_LABEL_MAP: Record<string, ExtractedPart['type']> = {
   'ram': 'memory', 'memory': 'memory',
   'storage': 'storage', 'hard drive': 'storage', 'ssd': 'storage',
   'motherboard': 'motherboard',
-  'power': 'psu',
+  'power supply': 'psu',
   'case': 'case',
   'cooling': 'cooling',
 }

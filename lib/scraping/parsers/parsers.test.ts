@@ -52,3 +52,69 @@ describe('parsePrebuiltPage — Best Buy', () => {
     expect(gpu?.name).toContain('RTX 4070')
   })
 })
+
+describe('parsePrebuiltPage — Newegg', () => {
+  const html = `
+    <html><body>
+      <h1 class="product-title">iBUYPOWER Gaming PC</h1>
+      <div class="price-current">$1,199<span>.</span><sup>99</sup></div>
+      <table class="product-specs">
+        <tr><th>Processor</th><td>Intel Core i5-13600KF</td></tr>
+        <tr><th>Graphics</th><td>NVIDIA GeForce RTX 4060</td></tr>
+        <tr><th>Memory</th><td>16GB DDR5</td></tr>
+      </table>
+    </body></html>
+  `
+  it('extracts prebuilt name', () => {
+    const result = parsePrebuiltPage(html, 'https://www.newegg.com/product/N82E123', 'newegg')
+    expect(result.prebuiltName).toBe('iBUYPOWER Gaming PC')
+  })
+  it('extracts CPU part', () => {
+    const result = parsePrebuiltPage(html, 'https://www.newegg.com/product/N82E123', 'newegg')
+    const cpu = result.parts.find(p => p.type === 'cpu')
+    expect(cpu?.name).toContain('i5-13600KF')
+  })
+})
+
+describe('parsePrebuiltPage — Amazon', () => {
+  const html = `
+    <html><body>
+      <span id="productTitle">CyberPowerPC Gamer Xtreme VR Gaming PC</span>
+      <span class="a-price"><span class="a-offscreen">$1,099.99</span></span>
+      <table id="productDetails_techSpec_section_1">
+        <tr><th>Processor</th><td>Intel Core i7-13700F</td></tr>
+        <tr><th>RAM</th><td>16GB DDR5</td></tr>
+        <tr><th>Graphics</th><td>NVIDIA GeForce RTX 4070</td></tr>
+      </table>
+    </body></html>
+  `
+  it('extracts prebuilt name', () => {
+    const result = parsePrebuiltPage(html, 'https://www.amazon.com/dp/B09XYZ', 'amazon')
+    expect(result.prebuiltName).toContain('CyberPowerPC')
+  })
+  it('extracts CPU part', () => {
+    const result = parsePrebuiltPage(html, 'https://www.amazon.com/dp/B09XYZ', 'amazon')
+    const cpu = result.parts.find(p => p.type === 'cpu')
+    expect(cpu?.name).toContain('i7-13700F')
+  })
+})
+
+describe('parsePrebuiltPage — Walmart', () => {
+  const html = `
+    <html><body>
+      <h1 itemprop="name">Skytech Shiva Gaming PC Desktop</h1>
+      <span itemprop="price" content="899.00"></span>
+      <div data-testid="specification-row"><span>Processor</span><span>AMD Ryzen 5 5600X</span></div>
+      <div data-testid="specification-row"><span>Graphics</span><span>AMD Radeon RX 6700 XT</span></div>
+    </body></html>
+  `
+  it('extracts prebuilt name', () => {
+    const result = parsePrebuiltPage(html, 'https://www.walmart.com/ip/product/123', 'walmart')
+    expect(result.prebuiltName).toContain('Skytech')
+  })
+  it('extracts CPU part', () => {
+    const result = parsePrebuiltPage(html, 'https://www.walmart.com/ip/product/123', 'walmart')
+    const cpu = result.parts.find(p => p.type === 'cpu')
+    expect(cpu?.name).toContain('Ryzen 5 5600X')
+  })
+})
