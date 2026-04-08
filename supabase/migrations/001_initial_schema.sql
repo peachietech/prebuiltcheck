@@ -21,7 +21,7 @@ create table comparisons (
   prebuilt_image_url text,
   retailer text not null,
   created_at timestamptz not null default now(),
-  expires_at timestamptz
+  expires_at timestamptz not null default now() + interval '30 days'
 );
 
 -- Individual parts for each comparison
@@ -45,3 +45,6 @@ create table parts (
 create index on parts(comparison_id);
 create index on comparisons(slug);
 create index on comparisons(prebuilt_url);
+create index on comparisons(expires_at);
+create index on pending_comparisons(created_at);
+create index on pending_comparisons(prebuilt_url);
