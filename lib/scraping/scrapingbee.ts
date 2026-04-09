@@ -4,13 +4,30 @@ export async function fetchPageHtml(url: string): Promise<string> {
     url,
     render_js: 'true',
     premium_proxy: 'true',
+    block_resources: 'true', // Skip images/CSS/fonts — cuts render time significantly
+    wait: '500',             // Wait 500ms for JS to settle, then grab HTML
+    timeout: '25000',        // Tell ScrapingBee to cap at 25s on their end
   })
 
-  const response = await fetch(`https://app.scrapingbee.com/api/v1?${params}`, {})
+  const controller = new AbortController()
+  const hardTimeout = setTimeout(() => controller.abort(), 28000) // 28s client-side cap
 
-  if (!response.ok) {
-    throw new Error(`ScrapingBee error: ${response.status}`)
+  try {
+    const response = await fetch(`https://app.scrapingbee.com/api/v1?${params}`, {
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`ScrapingBee error: ${response.status}`)
+    }
+
+    return response.text()
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Scraping timed out — please try again')
+    }
+    throw err
+  } finally {
+    clearTimeout(hardTimeout)
   }
-
-  return response.text()
 }
