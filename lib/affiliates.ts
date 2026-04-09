@@ -8,7 +8,7 @@ export function injectAffiliateTag(url: string, retailer: string): string {
   try {
     if (retailer === 'bestbuy') {
       const tag = process.env.BESTBUY_AFFILIATE_TAG
-      if (tag) return `https://bestbuy.7tiv.net/c/${tag}/${encodeURIComponent(url)}`
+      if (tag) return `https://bestbuy.7tiv.net/c/${tag}?u=${encodeURIComponent(url)}`
     }
 
     if (retailer === 'amazon') {

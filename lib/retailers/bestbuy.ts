@@ -31,10 +31,14 @@ function buildQuery(name: string, type: PartType, memoryType?: string): string {
       return model ? `${model[0].trim()} graphics card` : `${name} graphics card`
     }
     case 'memory': {
-      // "32GB DDR5 5200MHz" → "DDR5 32GB UDIMM" (UDIMM = desktop module, avoids laptop SODIMMs)
+      // Include speed when available — narrows results to the right tier and avoids
+      // server/workstation RAM kits that match the same size/gen at wildly inflated prices.
       const size = name.match(/\d+GB/i)?.[0] ?? '16GB'
       const gen = name.match(/DDR[45]/i)?.[0] ?? 'DDR5'
-      return `${gen} ${size} UDIMM`
+      const speed = name.match(/(\d{4,5})(?:\s*MHz)?/i)?.[1]
+      return speed
+        ? `${gen} ${size} ${speed} desktop memory`
+        : `${gen} ${size} desktop memory`
     }
     case 'storage': {
       // Use "M2" (no period) for Best Buy — the period in "M.2" can confuse
@@ -155,10 +159,15 @@ export async function searchBestBuy(
   const price = product.salePrice ?? product.regularPrice
   if (!price) return null
 
-  const productUrl = `https://www.bestbuy.com${product.url}`
+  // product.url can be absolute ("https://www.bestbuy.com/site/...") or
+  // relative ("/site/...") depending on API version — handle both.
+  const productUrl = product.url.startsWith('http')
+    ? product.url
+    : `https://www.bestbuy.com${product.url}`
+
   const tag = process.env.BESTBUY_AFFILIATE_TAG ?? ''
   const affiliateUrl = tag
-    ? `${AFFILIATE_BASE}${tag}/${encodeURIComponent(productUrl)}`
+    ? `${AFFILIATE_BASE}${tag}?u=${encodeURIComponent(productUrl)}`
     : productUrl
 
   return { retailer: 'bestbuy', price, name: product.name, affiliateUrl }
