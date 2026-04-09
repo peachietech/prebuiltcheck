@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { searchAmazon } from './amazon'
 import { searchBestBuy } from './bestbuy'
 import { searchWalmart } from './walmart'
@@ -33,7 +33,17 @@ describe('searchBestBuy', () => {
 })
 
 describe('searchWalmart', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // Stub credentials so isConfigured() returns true in tests
+    process.env.WALMART_CLIENT_ID = 'test-client-id'
+    process.env.WALMART_CLIENT_SECRET = 'test-client-secret'
+  })
+
+  afterEach(() => {
+    delete process.env.WALMART_CLIENT_ID
+    delete process.env.WALMART_CLIENT_SECRET
+  })
 
   it('returns a RetailerListing with affiliate URL', async () => {
     // Walmart needs 2 fetch calls: one for token, one for search
@@ -47,5 +57,12 @@ describe('searchWalmart', () => {
     expect(result).not.toBeNull()
     expect(result!.price).toBe(279.00)
     expect(result!.retailer).toBe('walmart')
+  })
+
+  it('returns null when credentials are not configured', async () => {
+    delete process.env.WALMART_CLIENT_ID
+    delete process.env.WALMART_CLIENT_SECRET
+    const result = await searchWalmart('Intel i7-13700KF')
+    expect(result).toBeNull()
   })
 })

@@ -7,6 +7,20 @@ import { selectLowestPrice, selectColorVariant } from '@/lib/retailers/pricing'
 import { generateSlug } from '@/lib/slug'
 import type { ExtractedPart, PricedPart, RetailerListing } from '@/types'
 
+const MAX_PARTS = 12
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const VALID_PART_TYPES = new Set(['cpu','gpu','motherboard','memory','storage','psu','case','cooling'])
+
+function isValidPart(p: unknown): p is ExtractedPart {
+  if (typeof p !== 'object' || p === null) return false
+  const part = p as Record<string, unknown>
+  return (
+    typeof part.name === 'string' &&
+    part.name.length <= 300 &&
+    VALID_PART_TYPES.has(part.type as string)
+  )
+}
+
 async function lookupPart(part: ExtractedPart): Promise<PricedPart> {
   const [amazonAny, bbAny, walmartAny] = await Promise.all([
     searchAmazon(part.name).catch(() => null),
@@ -60,10 +74,33 @@ async function lookupPart(part: ExtractedPart): Promise<PricedPart> {
 }
 
 export async function POST(req: NextRequest) {
-  const { pendingId, confirmedParts } = await req.json()
+  // Parse body safely
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
-  if (!pendingId || !Array.isArray(confirmedParts)) {
-    return NextResponse.json({ error: 'pendingId and confirmedParts are required' }, { status: 400 })
+  const { pendingId, confirmedParts } = (body ?? {}) as Record<string, unknown>
+
+  // Validate pendingId is a real UUID (prevents arbitrary DB queries)
+  if (typeof pendingId !== 'string' || !UUID_RE.test(pendingId)) {
+    return NextResponse.json({ error: 'pendingId must be a valid UUID' }, { status: 400 })
+  }
+
+  // Validate confirmedParts array
+  if (!Array.isArray(confirmedParts)) {
+    return NextResponse.json({ error: 'confirmedParts must be an array' }, { status: 400 })
+  }
+  if (confirmedParts.length === 0) {
+    return NextResponse.json({ error: 'confirmedParts must not be empty' }, { status: 400 })
+  }
+  if (confirmedParts.length > MAX_PARTS) {
+    return NextResponse.json({ error: `Too many parts (max ${MAX_PARTS})` }, { status: 400 })
+  }
+  if (!confirmedParts.every(isValidPart)) {
+    return NextResponse.json({ error: 'One or more parts are invalid' }, { status: 400 })
   }
 
   const supabase = createServerClient()
@@ -78,9 +115,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Pending comparison not found' }, { status: 404 })
   }
 
-  const pricedParts = await Promise.all(
-    (confirmedParts as ExtractedPart[]).map(lookupPart)
-  )
+  const pricedParts = await Promise.all(confirmedParts.map(lookupPart))
 
   const slug = generateSlug()
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()

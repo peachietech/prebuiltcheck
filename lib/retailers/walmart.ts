@@ -1,5 +1,10 @@
 import type { RetailerListing } from '@/types'
 
+// Return null immediately if Walmart credentials are not configured
+function isConfigured(): boolean {
+  return !!(process.env.WALMART_CLIENT_ID && process.env.WALMART_CLIENT_SECRET)
+}
+
 async function getWalmartToken(): Promise<string> {
   const credentials = Buffer.from(
     `${process.env.WALMART_CLIENT_ID}:${process.env.WALMART_CLIENT_SECRET}`
@@ -21,6 +26,8 @@ async function getWalmartToken(): Promise<string> {
 }
 
 export async function searchWalmart(query: string): Promise<RetailerListing | null> {
+  if (!isConfigured()) return null
+
   const token = await getWalmartToken()
 
   const params = new URLSearchParams({ query, numItems: '5' })

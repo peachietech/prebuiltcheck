@@ -3,12 +3,61 @@ import { fetchPageHtml } from '@/lib/scraping/scrapingbee'
 import { detectRetailer, parsePrebuiltPage } from '@/lib/scraping/parsers'
 import { findCachedComparison } from '@/lib/scraping/dedup'
 import { createServerClient } from '@/lib/supabase'
+import { checkRateLimit } from '@/lib/rateLimit'
+
+const MAX_URL_LENGTH = 2048
+const ALLOWED_PROTOCOLS = ['https:', 'http:']
+const BLOCKED_HOSTNAMES = ['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254']
+
+function validateUrl(raw: string): { valid: boolean; reason?: string } {
+  if (raw.length > MAX_URL_LENGTH) return { valid: false, reason: 'URL too long' }
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    return { valid: false, reason: 'Invalid URL' }
+  }
+  if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+    return { valid: false, reason: 'URL must use http or https' }
+  }
+  if (BLOCKED_HOSTNAMES.some(h => parsed.hostname === h || parsed.hostname.endsWith('.local'))) {
+    return { valid: false, reason: 'Invalid URL' }
+  }
+  return { valid: true }
+}
 
 export async function POST(req: NextRequest) {
-  const { url } = await req.json()
+  // Rate limit by IP
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const { allowed, retryAfter } = checkRateLimit(ip)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Too many requests. Try again in ${retryAfter}s.` },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+    )
+  }
 
-  if (!url || typeof url !== 'string') {
+  // Parse body safely
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  if (!body || typeof body !== 'object' || !('url' in body)) {
     return NextResponse.json({ error: 'url is required' }, { status: 400 })
+  }
+
+  const url = (body as Record<string, unknown>).url
+  if (typeof url !== 'string') {
+    return NextResponse.json({ error: 'url must be a string' }, { status: 400 })
+  }
+
+  // Validate URL (SSRF protection)
+  const { valid, reason } = validateUrl(url)
+  if (!valid) {
+    return NextResponse.json({ error: reason }, { status: 422 })
   }
 
   // Dedup check
