@@ -32,4 +32,5 @@ declare module 'paapi5-nodejs-sdk' {
 
   export const PartnerType: { ASSOCIATES: string }
   export const Resources: Record<string, string>
+  export const SearchItemsResource: Record<string, string>
 }

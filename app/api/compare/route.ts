@@ -3,7 +3,7 @@ import { createServerClient } from '@/lib/supabase'
 import { searchAmazon } from '@/lib/retailers/amazon'
 import { searchBestBuy } from '@/lib/retailers/bestbuy'
 import { searchWalmart } from '@/lib/retailers/walmart'
-import { selectLowestPrice, selectColorVariant } from '@/lib/retailers/pricing'
+import { selectLowestPrice } from '@/lib/retailers/pricing'
 import { generateSlug } from '@/lib/slug'
 import type { ExtractedPart, PricedPart, RetailerListing } from '@/types'
 
@@ -21,38 +21,36 @@ function isValidPart(p: unknown): p is ExtractedPart {
   )
 }
 
-async function lookupPart(part: ExtractedPart): Promise<PricedPart> {
-  const [amazonAny, bbAny, walmartAny] = await Promise.all([
+/** 250ms pause — keeps us well under Best Buy's per-second limit */
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+async function lookupPart(part: ExtractedPart, index: number): Promise<PricedPart> {
+  // Stagger requests: part 0 at 0ms, part 1 at 250ms, part 2 at 500ms …
+  // This prevents all 8 parts from hammering Best Buy simultaneously.
+  await sleep(index * 300)
+
+  const [amazonResult, bbResult, walmartResult] = await Promise.all([
     searchAmazon(part.name).catch(() => null),
-    searchBestBuy(part.name).catch(() => null),
+    searchBestBuy(part.name, part.type).catch(() => null),
     searchWalmart(part.name).catch(() => null),
   ])
 
-  const anyListings = [amazonAny, bbAny, walmartAny].filter(Boolean) as RetailerListing[]
-
-  const [amazonBlack, bbBlack, walmartBlack, amazonWhite, bbWhite, walmartWhite] = await Promise.all([
-    searchAmazon(`${part.name} black`).catch(() => null),
-    searchBestBuy(`${part.name} black`).catch(() => null),
-    searchWalmart(`${part.name} black`).catch(() => null),
-    searchAmazon(`${part.name} white`).catch(() => null),
-    searchBestBuy(`${part.name} white`).catch(() => null),
-    searchWalmart(`${part.name} white`).catch(() => null),
-  ])
-
-  const blackListings = [amazonBlack, bbBlack, walmartBlack].filter(Boolean) as RetailerListing[]
-  const whiteListings = [amazonWhite, bbWhite, walmartWhite].filter(Boolean) as RetailerListing[]
-
-  const lowest = anyListings.length ? selectLowestPrice(anyListings) : null
-  const black = selectColorVariant(blackListings)
-  const white = selectColorVariant(whiteListings)
+  const listings = [amazonResult, bbResult, walmartResult].filter(Boolean) as RetailerListing[]
+  const lowest = listings.length ? selectLowestPrice(listings) : null
 
   if (!lowest) {
+    // Fallback: affiliate-tagged Best Buy search link so user can click through manually
+    const bbTag = process.env.BESTBUY_AFFILIATE_TAG ?? ''
+    const bbSearch = `https://www.bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(part.name)}`
+    const fallbackUrl = bbTag
+      ? `https://bestbuy.7tiv.net/c/${bbTag}/${encodeURIComponent(bbSearch)}`
+      : bbSearch
     return {
       type: part.type,
       name: part.name,
       lowestPrice: 0,
-      lowestRetailer: 'amazon',
-      lowestAffiliateUrl: `https://www.amazon.com/s?k=${encodeURIComponent(part.name)}&tag=${process.env.AMAZON_ASSOCIATE_TAG}`,
+      lowestRetailer: 'bestbuy',
+      lowestAffiliateUrl: fallbackUrl,
       blackPrice: null, blackRetailer: null, blackAffiliateUrl: null,
       whitePrice: null, whiteRetailer: null, whiteAffiliateUrl: null,
     }
@@ -64,44 +62,34 @@ async function lookupPart(part: ExtractedPart): Promise<PricedPart> {
     lowestPrice: lowest.price,
     lowestRetailer: lowest.retailer,
     lowestAffiliateUrl: lowest.affiliateUrl,
-    blackPrice: black?.price ?? null,
-    blackRetailer: black?.retailer ?? null,
-    blackAffiliateUrl: black?.affiliateUrl ?? null,
-    whitePrice: white?.price ?? null,
-    whiteRetailer: white?.retailer ?? null,
-    whiteAffiliateUrl: white?.affiliateUrl ?? null,
+    // Color variants not used for PC components — cases are the exception
+    // but we keep schema null so front-end works without changes
+    blackPrice: null, blackRetailer: null, blackAffiliateUrl: null,
+    whitePrice: null, whiteRetailer: null, whiteAffiliateUrl: null,
   }
 }
 
 export async function POST(req: NextRequest) {
-  // Parse body safely
   let body: unknown
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
+  try { body = await req.json() }
+  catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   const { pendingId, confirmedParts } = (body ?? {}) as Record<string, unknown>
 
-  // Validate pendingId is a real UUID (prevents arbitrary DB queries)
-  if (typeof pendingId !== 'string' || !UUID_RE.test(pendingId)) {
+  if (typeof pendingId !== 'string' || !UUID_RE.test(pendingId))
     return NextResponse.json({ error: 'pendingId must be a valid UUID' }, { status: 400 })
-  }
 
-  // Validate confirmedParts array
-  if (!Array.isArray(confirmedParts)) {
+  if (!Array.isArray(confirmedParts))
     return NextResponse.json({ error: 'confirmedParts must be an array' }, { status: 400 })
-  }
-  if (confirmedParts.length === 0) {
+
+  if (confirmedParts.length === 0)
     return NextResponse.json({ error: 'confirmedParts must not be empty' }, { status: 400 })
-  }
-  if (confirmedParts.length > MAX_PARTS) {
+
+  if (confirmedParts.length > MAX_PARTS)
     return NextResponse.json({ error: `Too many parts (max ${MAX_PARTS})` }, { status: 400 })
-  }
-  if (!confirmedParts.every(isValidPart)) {
+
+  if (!confirmedParts.every(isValidPart))
     return NextResponse.json({ error: 'One or more parts are invalid' }, { status: 400 })
-  }
 
   const supabase = createServerClient()
 
@@ -111,11 +99,13 @@ export async function POST(req: NextRequest) {
     .eq('id', pendingId)
     .single()
 
-  if (pendingErr || !pending) {
+  if (pendingErr || !pending)
     return NextResponse.json({ error: 'Pending comparison not found' }, { status: 404 })
-  }
 
-  const pricedParts = await Promise.all(confirmedParts.map(lookupPart))
+  // Look up prices for all parts — staggered to avoid API rate limits
+  const pricedParts = await Promise.all(
+    confirmedParts.map((part, i) => lookupPart(part, i))
+  )
 
   const slug = generateSlug()
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -134,9 +124,8 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  if (compErr) {
+  if (compErr)
     return NextResponse.json({ error: 'Failed to save comparison' }, { status: 500 })
-  }
 
   await supabase.from('parts').insert(
     pricedParts.map(p => ({

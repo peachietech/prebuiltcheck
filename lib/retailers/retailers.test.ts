@@ -9,16 +9,21 @@ describe('searchBestBuy', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns a RetailerListing with affiliate URL', async () => {
+    // Stub the API key so the guard passes
+    process.env.BESTBUY_API_KEY = 'test-key'
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
       products: [{
         name: 'Intel Core i7-13700KF',
         regularPrice: 289.99,
-        sku: '1234567',
+        salePrice: null,
+        sku: 1234567,
         url: '/site/intel-core-i7/1234567.p',
+        categoryPath: [{ name: 'Computers & Tablets' }, { name: 'Processors' }],
       }]
     }), { status: 200 }))
 
-    const result = await searchBestBuy('Intel i7-13700KF')
+    const result = await searchBestBuy('Intel i7-13700KF', 'cpu')
+    delete process.env.BESTBUY_API_KEY
     expect(result).not.toBeNull()
     expect(result!.price).toBe(289.99)
     expect(result!.retailer).toBe('bestbuy')
@@ -26,8 +31,10 @@ describe('searchBestBuy', () => {
   })
 
   it('returns null when no products found', async () => {
+    process.env.BESTBUY_API_KEY = 'test-key'
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ products: [] }), { status: 200 }))
-    const result = await searchBestBuy('nonexistent part xyz')
+    const result = await searchBestBuy('nonexistent part xyz', 'cpu')
+    delete process.env.BESTBUY_API_KEY
     expect(result).toBeNull()
   })
 })
