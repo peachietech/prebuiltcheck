@@ -3,6 +3,7 @@
   "functions": {
     "app/api/scrape/route.ts": { "maxDuration": 30 },
     "app/api/compare/route.ts": { "maxDuration": 60 },
+    "app/api/search-part/route.ts": { "maxDuration": 30 },
     "app/api/analyze-image/route.ts": { "maxDuration": 30 }
   }
 }
