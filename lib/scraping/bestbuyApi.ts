@@ -31,10 +31,15 @@ function searchQueryFromSlug(url: string): string {
   return slug.replace(/-/g, ' ').slice(0, 100)
 }
 
-// Best Buy API "details" field: [{name: "Processor Chipset", value: "B760"}, ...]
+// Best Buy API "details" field — confirmed real field names from live API:
+// { name: "Motherboard Model Number", value: "B760 D5" }
+// { name: "CPU Cooling System",       value: "Air" }
+// { name: "Power Supply Maximum Wattage", value: "600 watts" }
+// { name: "Enclosure Type",           value: "Mid tower" }
+// { name: "Product Name",             value: "Slate MESH Gaming Desktop PC..." }
 type BestBuyDetail = { name: string; value: string }
 
-// Look up a spec by name in the details array (case-insensitive partial match)
+/** Look up a spec by partial name match (case-insensitive) */
 function getDetail(details: BestBuyDetail[], ...keys: string[]): string | null {
   for (const key of keys) {
     const found = details.find(d => d.name.toLowerCase().includes(key.toLowerCase()))
@@ -43,22 +48,46 @@ function getDetail(details: BestBuyDetail[], ...keys: string[]): string | null {
   return null
 }
 
-// Extract a meaningful series/model name from the prebuilt product title.
-// "iBUYPOWER Slate MR Gaming Desktop…" → "Slate"
-// "CyberPowerPC Gamer Xtreme VR Gaming PC" → "Gamer Xtreme"
-// "HP OMEN 45L Gaming Desktop" → "OMEN 45L"
+/**
+ * Extract the chipset code from a "Motherboard Model Number" value.
+ * "B760 D5" → "B760", "Z790-A" → "Z790", "X670E" → "X670E"
+ */
+function extractChipsetCode(moboModelNum: string): string {
+  const m = moboModelNum.match(/\b([BZHXA]\d{3}[A-Z]*)\b/i)
+  return m ? m[1].toUpperCase() : moboModelNum.split(/\s/)[0]
+}
+
+/**
+ * Parse PSU wattage from strings like "600 watts", "750W", "850 Watts".
+ * Returns "600W power supply" etc.
+ */
+function parsePsuWattage(wattageStr: string): string | null {
+  const m = wattageStr.match(/(\d+)\s*(?:watt|w\b)/i)
+  return m ? `${m[1]}W power supply` : null
+}
+
+/**
+ * Extract the product series/model name for case search.
+ * Strips brand name + hardware specs, leaving just the product line name.
+ * "iBUYPOWER - Slate MESH Gaming Desktop PC -Intel Core i7..."  → "Slate MESH"
+ * "CyberPowerPC Gamer Xtreme VR Gaming PC"                      → "Gamer Xtreme VR"
+ */
 function extractCaseSeries(productName: string, brandName: string): string | null {
-  // Strip known brand prefixes (case-insensitive) then grab the next 1-2 word tokens
   const escaped = brandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const stripped = productName.replace(new RegExp(escaped, 'i'), '').trim()
+  // Strip brand name
+  let stripped = productName.replace(new RegExp(escaped, 'i'), '').trim()
+  // Remove leading dashes / separators like " - "
+  stripped = stripped.replace(/^[\s\-–—]+/, '').trim()
+  // Cut off at the first hardware spec separator or "Gaming Desktop/PC" phrase
+  const cutoff = stripped.search(
+    /\s*[-–—]\s*(?:Intel|AMD|NVIDIA|Ryzen|Core)\b|\bGaming\s+(?:Desktop|PC|Tower)\b|\bDesktop\s+PC\b/i
+  )
+  if (cutoff > 0) stripped = stripped.slice(0, cutoff).trim()
 
-  // Skip common filler words at the start
-  const fillers = /^(gaming|desktop|pc|tower|prebuilt|system|series|edition)\b/i
-  const tokens = stripped.split(/\s+/).filter(t => !fillers.test(t))
-
-  // Take up to 2 meaningful tokens (at least 3 chars each, not pure punctuation)
-  const series = tokens.filter(t => t.length >= 3 && /[a-z]/i.test(t)).slice(0, 2).join(' ')
-  return series.length >= 3 ? series : null
+  // Now stripped should be something like "Slate MESH" or "Gamer Xtreme"
+  const tokens = stripped.split(/\s+/).filter(t => t.length >= 2 && /[a-zA-Z]/.test(t))
+  const series = tokens.slice(0, 3).join(' ')
+  return series.length >= 2 ? series : null
 }
 
 const FIELD_LIST = 'name,regularPrice,salePrice,images,features,details,manufacturer,modelNumber'
@@ -106,16 +135,30 @@ export async function fetchBestBuyProduct(url: string): Promise<ParsedListing> {
   const prebuiltImageUrl = images?.[0]?.href ?? null
   const manufacturer = (product.manufacturer as string) ?? ''
 
-  // Parse spec-table details for chipset, cooler type, etc.
+  // ── Extract from spec details (confirmed real field names from live API) ──
   const details = (product.details as BestBuyDetail[] | undefined) ?? []
 
-  const chipset = getDetail(details, 'chipset', 'processor chipset')
-  const coolerType = getDetail(details, 'cooling', 'cooler type', 'cpu cooler')
+  // "Motherboard Model Number" = "B760 D5" → chipset "B760"
+  const moboModelNum = getDetail(details, 'motherboard model number')
+  const chipset = moboModelNum ? extractChipsetCode(moboModelNum) : null
+
+  // "CPU Cooling System" = "Air" | "Liquid"
+  const coolerType = getDetail(details, 'cpu cooling system', 'cooling system', 'cooler type')
+
+  // "Power Supply Maximum Wattage" = "600 watts"
+  const psuWattageRaw = getDetail(details, 'power supply maximum wattage', 'power supply wattage')
+  const psuName = psuWattageRaw ? parsePsuWattage(psuWattageRaw) : null
+
+  // "Enclosure Type" = "Mid tower" / "Full tower" / "Mini tower"
+  const enclosureType = getDetail(details, 'enclosure type')
+
+  // "Product Name" detail — cleaner than the full listing name for case series extraction
+  const productNameDetail = getDetail(details, 'product name') ?? prebuiltName
 
   const parts: ExtractedPart[] = []
   const seen = new Set<ExtractedPart['type']>()
 
-  // --- Feature list: CPU, GPU, memory, storage ---
+  // ── Feature list: CPU, GPU, memory, storage ──────────────────────────────
   const features = product.features as Array<{ feature: string }> | undefined
   for (const feature of features ?? []) {
     const rawText = feature.feature ?? ''
@@ -127,9 +170,8 @@ export async function fetchBestBuyProduct(url: string): Promise<ParsedListing> {
     }
   }
 
-  // --- Specs section: motherboard chipset ---
+  // ── Motherboard: from "Motherboard Model Number" detail ──────────────────
   if (!seen.has('motherboard') && chipset) {
-    // Map chipset code → full search term
     const moboName = resolveMotherboardFromChipset(chipset)
     if (moboName) {
       parts.push({ type: 'motherboard', name: moboName })
@@ -137,7 +179,7 @@ export async function fetchBestBuyProduct(url: string): Promise<ParsedListing> {
     }
   }
 
-  // --- Specs section: cooler type ---
+  // ── Cooling: from "CPU Cooling System" detail ────────────────────────────
   if (!seen.has('cooling') && coolerType) {
     const coolerName = resolveCoolerName(coolerType, parts)
     if (coolerName) {
@@ -146,16 +188,31 @@ export async function fetchBestBuyProduct(url: string): Promise<ParsedListing> {
     }
   }
 
-  // --- Case: infer from product title series name (marked suggested — user should confirm) ---
-  if (!seen.has('case') && manufacturer) {
-    const series = extractCaseSeries(prebuiltName, manufacturer)
-    if (series) {
+  // ── PSU: from "Power Supply Maximum Wattage" detail ─────────────────────
+  if (!seen.has('psu') && psuName) {
+    parts.push({ type: 'psu', name: psuName })
+    seen.add('psu')
+  }
+
+  // ── Case: series name from product title + enclosure type ────────────────
+  if (!seen.has('case')) {
+    const series = manufacturer ? extractCaseSeries(productNameDetail, manufacturer) : null
+    if (series && enclosureType) {
+      // e.g. "iBUYPOWER Slate MESH mid tower case"
+      const enclosure = enclosureType.toLowerCase().includes('tower') ? enclosureType.toLowerCase() : 'mid tower'
+      parts.push({ type: 'case', name: `${manufacturer} ${series} ${enclosure} case`, suggested: true })
+      seen.add('case')
+    } else if (series && manufacturer) {
       parts.push({ type: 'case', name: `${manufacturer} ${series} case`, suggested: true })
+      seen.add('case')
+    } else if (enclosureType) {
+      // At least we know the form factor
+      parts.push({ type: 'case', name: `${enclosureType} PC case`, suggested: true })
       seen.add('case')
     }
   }
 
-  // --- Smart suggestions for anything still missing ---
+  // ── Fallback suggestions for anything still missing ──────────────────────
   const suggestions = suggestMissingParts(parts)
   parts.push(...suggestions)
 
@@ -167,26 +224,27 @@ export async function fetchBestBuyProduct(url: string): Promise<ParsedListing> {
 function resolveMotherboardFromChipset(chipset: string): string | null {
   const c = chipset.toUpperCase().trim()
 
-  // Intel chipsets (LGA1700 — 12th/13th/14th gen)
+  // Intel LGA1700 (12th/13th/14th gen): Z690/Z790/H670/H770/B660/B760
   if (/^Z[679]\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
   if (/^H[67]\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
   if (/^B[67]\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
 
-  // Intel LGA1851 (Arrow Lake)
-  if (/^Z8\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
-  if (/^B8\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
+  // Intel LGA1851 (Arrow Lake 15th gen): Z890/B860/H810
+  if (/^Z8[59]0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
+  if (/^B8[56]0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
+  if (/^H8[12]0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
 
-  // AMD AM5 (Ryzen 7000/9000)
-  if (/^X[67]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
-  if (/^B[67]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
-  if (/^A[67]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
+  // AMD AM5 (Ryzen 7000/9000): X670/X870/B650/B850
+  if (/^X[68]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
+  if (/^B[68]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
+  if (/^A[68]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
 
-  // AMD AM4 (Ryzen 5000 and older)
+  // AMD AM4 (Ryzen 5000 and older): X570/X470/B550/B450
   if (/^X[45]\d0/.test(c)) return `AMD ${c} ATX motherboard AM4`
   if (/^B[45]\d0/.test(c)) return `AMD ${c} ATX motherboard AM4`
   if (/^A[45]\d0/.test(c)) return `AMD ${c} ATX motherboard AM4`
 
-  // Unknown chipset — still better than nothing
+  // Unknown chipset — generic fallback
   return `${chipset} motherboard`
 }
 
@@ -195,7 +253,6 @@ function resolveCoolerName(coolerType: string, parts: ExtractedPart[]): string |
   const cpuName = parts.find(p => p.type === 'cpu')?.name ?? ''
 
   if (/liquid|aio|water/i.test(t)) {
-    // Liquid cooler — pick size based on CPU tier
     if (/i9|ryzen\s*9/i.test(cpuName)) return '360mm AIO liquid cooler'
     if (/i7|ryzen\s*7/i.test(cpuName)) return '240mm AIO liquid cooler'
     return '240mm AIO liquid cooler'
