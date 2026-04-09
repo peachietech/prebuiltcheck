@@ -71,13 +71,20 @@ export function parseiBUYPOWER(html: string, url: string): ParsedListing {
     prebuiltPrice = prebuiltPrice ?? extractPrice(root, jsonLd)
     prebuiltImageUrl = prebuiltImageUrl ?? extractImage(root)
 
+    // Research finding: iBUYPOWER embeds specs in JSON-LD `description` as plain text
+    // e.g. "AMD Ryzen™ 7 9800X3D Processor (8X 4.7GHz/96MB L3 Cache)\nGeForce RTX 5070..."
+    const specLines: string[] = []
+    if (jsonLd?.description && typeof jsonLd.description === 'string') {
+      jsonLd.description.split(/[\n,•·|]/).forEach(s => specLines.push(s.trim()))
+    }
+
     // iBUYPOWER spec table: look for rows with colon-separated label: value
     const rows = root.querySelectorAll('.specs-table tr, .spec-table tr, table tr, [class*="specs"] tr')
-    const specLines = rows.map(row => row.text.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    rows.forEach(row => specLines.push(row.text.replace(/\s+/g, ' ').trim()))
 
     // Also grab bullet lists in the description
-    const bullets = root.querySelectorAll('.product-description li, .description li, [class*="features"] li')
-    bullets.forEach(b => specLines.push(b.text.trim()))
+    root.querySelectorAll('.product-description li, .description li, [class*="features"] li')
+      .forEach(b => specLines.push(b.text.trim()))
 
     if (parts.length < 2) parts = extractPartsFromText(specLines)
   }

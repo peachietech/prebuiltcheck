@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchPageHtml } from '@/lib/scraping/scrapingbee'
 import { fetchBestBuyProduct } from '@/lib/scraping/bestbuyApi'
+import { fetchNZXTProduct } from '@/lib/scraping/nzxtApi'
 import { detectRetailer, parsePrebuiltPage } from '@/lib/scraping/parsers'
 import { findCachedComparison } from '@/lib/scraping/dedup'
 import { createServerClient } from '@/lib/supabase'
@@ -72,6 +73,32 @@ export async function POST(req: NextRequest) {
     retailer = detectRetailer(url)
   } catch {
     return NextResponse.json({ error: 'Unsupported retailer URL' }, { status: 422 })
+  }
+
+  // NZXT: Shopify store — use /products/{handle}.json directly (free, no key)
+  if (retailer === 'nzxt') {
+    try {
+      const parsed = await fetchNZXTProduct(url)
+      const supabase = createServerClient()
+      const { data, error } = await supabase
+        .from('pending_comparisons')
+        .insert({
+          prebuilt_url: url,
+          prebuilt_name: parsed.prebuiltName,
+          prebuilt_price: parsed.prebuiltPrice,
+          prebuilt_image_url: parsed.prebuiltImageUrl,
+          retailer,
+          extracted_parts: parsed.parts,
+        })
+        .select('id')
+        .single()
+
+      if (error) return NextResponse.json({ error: 'Failed to save pending comparison' }, { status: 500 })
+      return NextResponse.json({ pendingId: data.id })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json({ error: `NZXT lookup failed: ${message}` }, { status: 502 })
+    }
   }
 
   // Best Buy: use Products API directly — instant, no scraping credits needed
