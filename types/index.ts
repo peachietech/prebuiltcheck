@@ -5,6 +5,7 @@ export type RetailerName = 'amazon' | 'bestbuy' | 'walmart' | 'newegg'
 export interface ExtractedPart {
   type: PartType
   name: string
+  suggested?: boolean  // true when inferred, not found directly in the listing
 }
 
 export interface RetailerListing {
