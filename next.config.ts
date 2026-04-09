@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ['paapi5-nodejs-sdk'],
 };
 
 export default nextConfig;
