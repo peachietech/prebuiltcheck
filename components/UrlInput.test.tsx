@@ -11,7 +11,7 @@ global.fetch = vi.fn()
 describe('UrlInput', () => {
   it('renders paste input and compare button', () => {
     render(<UrlInput />)
-    expect(screen.getByPlaceholderText(/paste a.*url/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/paste a prebuilt/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /compare/i })).toBeInTheDocument()
   })
 

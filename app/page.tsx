@@ -1,6 +1,19 @@
+'use client'
+
+import { useState } from 'react'
 import UrlInput from '@/components/UrlInput'
+import ImageUpload from '@/components/ImageUpload'
+
+type Tab = 'url' | 'photo'
+
+const RETAILERS = [
+  'Best Buy', 'Newegg', 'Amazon', 'Walmart',
+  'iBUYPOWER', 'CyberPowerPC', 'Costco', 'NZXT', 'HP',
+]
 
 export default function HomePage() {
+  const [tab, setTab] = useState<Tab>('url')
+
   return (
     <main className="min-h-screen bg-[#0f0f13]">
       {/* Nav */}
@@ -17,8 +30,49 @@ export default function HomePage() {
         <h1 className="text-[32px] font-extrabold tracking-tight leading-tight text-[#f9fafb] mb-3">
           See exactly how much you could save<br />by building it yourself
         </h1>
-        <p className="text-sm text-[#6b7280] mb-8">Paste any prebuilt PC link &mdash; we&apos;ll find every part at its lowest price.</p>
-        <UrlInput />
+        <p className="text-sm text-[#6b7280] mb-8">
+          Paste a prebuilt PC link or upload a photo — we&apos;ll find every part at its lowest price.
+        </p>
+
+        {/* Tab switcher */}
+        <div className="inline-flex bg-[#1a1a2e] rounded-xl p-1 mb-6 border border-[#2d2d4a]">
+          <button
+            onClick={() => setTab('url')}
+            className={`px-4 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
+              tab === 'url'
+                ? 'bg-[#6366f1] text-white'
+                : 'text-[#6b7280] hover:text-[#9ca3af]'
+            }`}
+          >
+            🔗 Paste URL
+          </button>
+          <button
+            onClick={() => setTab('photo')}
+            className={`px-4 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
+              tab === 'photo'
+                ? 'bg-[#6366f1] text-white'
+                : 'text-[#6b7280] hover:text-[#9ca3af]'
+            }`}
+          >
+            📷 Upload Photo
+          </button>
+        </div>
+
+        {tab === 'url' ? (
+          <>
+            <UrlInput />
+            <p className="mt-2.5 text-xs text-[#374151]">
+              {RETAILERS.join(' · ')}
+            </p>
+          </>
+        ) : (
+          <>
+            <ImageUpload />
+            <p className="mt-3 text-xs text-[#374151]">
+              Works with store shelf tags, product boxes, and spec sheet screenshots
+            </p>
+          </>
+        )}
       </section>
 
       {/* Featured Deals — placeholder until comparisons exist */}

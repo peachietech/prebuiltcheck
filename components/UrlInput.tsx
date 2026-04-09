@@ -3,7 +3,10 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const SUPPORTED_DOMAINS = ['bestbuy.com', 'newegg.com', 'amazon.com', 'walmart.com', 'bhphotovideo.com', 'microcenter.com']
+const SUPPORTED_DOMAINS = [
+  'bestbuy.com', 'newegg.com', 'amazon.com', 'walmart.com',
+  'ibuypower.com', 'cyberpowerpc.com', 'costco.com', 'nzxt.com', 'hp.com',
+]
 
 export default function UrlInput() {
   const router = useRouter()
@@ -16,7 +19,7 @@ export default function UrlInput() {
   async function handleCompare() {
     if (!url) return
     if (!isSupported) {
-      setError('Unsupported retailer — try Best Buy, Newegg, Amazon, or Walmart')
+      setError('Unsupported retailer — try Best Buy, Newegg, Amazon, Walmart, iBUYPOWER, CyberPowerPC, Costco, NZXT, or HP')
       return
     }
 
@@ -56,7 +59,7 @@ export default function UrlInput() {
           value={url}
           onChange={e => setUrl(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleCompare()}
-          placeholder="Paste a Best Buy, Newegg, Amazon or Walmart URL..."
+          placeholder="Paste a prebuilt PC link…"
           className="flex-1 bg-transparent outline-none text-sm text-[#e5e7eb] placeholder:text-[#4b5563] min-w-0"
         />
         <button
@@ -64,13 +67,10 @@ export default function UrlInput() {
           disabled={loading || !url}
           className="bg-[#6366f1] hover:bg-[#4f52d6] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors"
         >
-          {loading ? 'Loading\u2026' : 'Compare \u2192'}
+          {loading ? 'Loading…' : 'Compare →'}
         </button>
       </div>
       {error && <p className="mt-2 text-sm text-[#ef4444] text-center">{error}</p>}
-      <p className="mt-2.5 text-xs text-[#374151] text-center">
-        Works with Best Buy &middot; Newegg &middot; Amazon &middot; Walmart &middot; B&amp;H &middot; Micro Center
-      </p>
     </div>
   )
 }

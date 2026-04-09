@@ -13,6 +13,8 @@ interface Props {
   prebuiltName: string
   retailer: string
   prebuiltPrice: number
+  prebuiltImageUrl: string | null
+  affiliatePrebuiltUrl: string | null
   slug: string
   parts: PricedPart[]
 }
@@ -25,7 +27,9 @@ function getBuildTotal(parts: PricedPart[], filter: ColorFilter): number {
   }, 0)
 }
 
-export default function ComparisonClient({ prebuiltName, retailer, prebuiltPrice, slug, parts }: Props) {
+export default function ComparisonClient({
+  prebuiltName, retailer, prebuiltPrice, prebuiltImageUrl, affiliatePrebuiltUrl, slug, parts
+}: Props) {
   const [colorFilter, setColorFilter] = useState<ColorFilter>('lowest')
   const [windowsEnabled, setWindowsEnabled] = useState(false)
 
@@ -43,6 +47,8 @@ export default function ComparisonClient({ prebuiltName, retailer, prebuiltPrice
         prebuiltName={prebuiltName}
         retailer={retailer}
         prebuiltPrice={prebuiltPrice}
+        prebuiltImageUrl={prebuiltImageUrl}
+        affiliatePrebuiltUrl={affiliatePrebuiltUrl}
         buildTotal={buildTotal}
         windowsEnabled={windowsEnabled}
       />

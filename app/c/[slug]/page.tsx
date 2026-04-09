@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase'
+import { injectAffiliateTag } from '@/lib/affiliates'
 import ComparisonClient from './ComparisonClient'
 import type { PricedPart } from '@/types'
 
@@ -34,6 +35,12 @@ export default async function ComparisonPage({ params }: { params: Promise<{ slu
     whiteAffiliateUrl: row.white_affiliate_url,
   }))
 
+  // Build affiliate-tagged link back to the original prebuilt listing
+  const prebuiltUrl = comparison.prebuilt_url ?? null
+  const affiliatePrebuiltUrl = prebuiltUrl
+    ? injectAffiliateTag(prebuiltUrl, comparison.retailer)
+    : null
+
   return (
     <main className="min-h-screen bg-[#0f0f13]">
       <nav className="flex items-center gap-3 px-6 py-4 border-b border-[#1e1e2e]">
@@ -46,6 +53,8 @@ export default async function ComparisonPage({ params }: { params: Promise<{ slu
           prebuiltName={comparison.prebuilt_name}
           retailer={comparison.retailer}
           prebuiltPrice={comparison.prebuilt_price}
+          prebuiltImageUrl={comparison.prebuilt_image_url ?? null}
+          affiliatePrebuiltUrl={affiliatePrebuiltUrl}
           slug={comparison.slug}
           parts={parts}
         />

@@ -4,15 +4,28 @@ interface Props {
   prebuiltName: string
   retailer: string
   prebuiltPrice: number
+  prebuiltImageUrl: string | null
+  affiliatePrebuiltUrl: string | null
   buildTotal: number
   windowsEnabled: boolean
 }
 
 const RETAILER_LABELS: Record<string, string> = {
-  bestbuy: 'Best Buy', newegg: 'Newegg', amazon: 'Amazon', walmart: 'Walmart',
+  bestbuy: 'Best Buy',
+  newegg: 'Newegg',
+  amazon: 'Amazon',
+  walmart: 'Walmart',
+  ibuypower: 'iBUYPOWER',
+  cyberpowerpc: 'CyberPowerPC',
+  costco: 'Costco',
+  nzxt: 'NZXT',
+  hp: 'HP',
+  photo: 'Photo',
 }
 
-export default function ComparisonHeader({ prebuiltName, retailer, prebuiltPrice, buildTotal, windowsEnabled }: Props) {
+export default function ComparisonHeader({
+  prebuiltName, retailer, prebuiltPrice, prebuiltImageUrl, affiliatePrebuiltUrl, buildTotal, windowsEnabled
+}: Props) {
   const effectiveBuildTotal = buildTotal + (windowsEnabled ? 130 : 0)
   const savings = prebuiltPrice - effectiveBuildTotal
   const pct = Math.round(Math.abs(savings) / prebuiltPrice * 100)
@@ -20,8 +33,38 @@ export default function ComparisonHeader({ prebuiltName, retailer, prebuiltPrice
 
   return (
     <div className="mb-6">
-      <p className="text-[11px] text-[#6b7280] uppercase tracking-[1px] mb-1.5">{RETAILER_LABELS[retailer] ?? retailer} · Prebuilt</p>
-      <h1 className="text-[20px] font-bold text-[#f9fafb] tracking-tight mb-4">{prebuiltName}</h1>
+      <p className="text-[11px] text-[#6b7280] uppercase tracking-[1px] mb-1.5">
+        {RETAILER_LABELS[retailer] ?? retailer} · Prebuilt
+      </p>
+
+      {/* Product image + name row */}
+      <div className="flex items-start gap-4 mb-4">
+        {prebuiltImageUrl && (
+          <div className="shrink-0 w-20 h-20 rounded-lg bg-[#1e1e2e] border border-[#2d2d4a] overflow-hidden flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={prebuiltImageUrl}
+              alt={prebuiltName}
+              className="w-full h-full object-contain p-1"
+            />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[18px] font-bold text-[#f9fafb] tracking-tight leading-snug">{prebuiltName}</h1>
+          {affiliatePrebuiltUrl && (
+            <a
+              href={affiliatePrebuiltUrl}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              className="inline-flex items-center gap-1 mt-1.5 text-[12px] text-[#818cf8] hover:text-[#6366f1] transition-colors"
+            >
+              View on {RETAILER_LABELS[retailer] ?? retailer} →
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Price comparison */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="bg-[#1e1e2e] rounded-xl px-5 py-2.5">
           <p className="text-[10px] text-[#6b7280] uppercase tracking-[0.8px]">Prebuilt price</p>

@@ -32,7 +32,7 @@ export interface PricedPart {
 export interface Comparison {
   id: string
   slug: string
-  prebuiltUrl: string
+  prebuiltUrl: string | null
   prebuiltName: string
   prebuiltPrice: number
   prebuiltImageUrl: string | null
@@ -44,7 +44,7 @@ export interface Comparison {
 
 export interface PendingComparison {
   id: string
-  prebuiltUrl: string
+  prebuiltUrl: string | null
   prebuiltName: string
   prebuiltPrice: number | null
   prebuiltImageUrl: string | null
