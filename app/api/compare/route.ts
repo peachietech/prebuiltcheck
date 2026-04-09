@@ -3,7 +3,9 @@ import { createServerClient } from '@/lib/supabase'
 import { searchAmazon } from '@/lib/retailers/amazon'
 import { searchBestBuy } from '@/lib/retailers/bestbuy'
 import { searchWalmart } from '@/lib/retailers/walmart'
+import { searchNewegg } from '@/lib/retailers/newegg'
 import { selectLowestPrice } from '@/lib/retailers/pricing'
+import { getCached, setCache, makeCacheKey, type CachedResults } from '@/lib/retailers/cache'
 import { generateSlug } from '@/lib/slug'
 import type { ExtractedPart, PricedPart, RetailerListing } from '@/types'
 
@@ -21,25 +23,12 @@ function isValidPart(p: unknown): p is ExtractedPart {
   )
 }
 
-/** 250ms pause — keeps us well under Best Buy's per-second limit */
+/** 300ms pause used only on cache misses to avoid hammering retailer APIs. */
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-async function lookupPart(part: ExtractedPart, index: number): Promise<PricedPart> {
-  // Stagger requests: part 0 at 0ms, part 1 at 250ms, part 2 at 500ms …
-  // This prevents all 8 parts from hammering Best Buy simultaneously.
-  await sleep(index * 300)
-
-  const [amazonResult, bbResult, walmartResult] = await Promise.all([
-    searchAmazon(part.name).catch(() => null),
-    searchBestBuy(part.name, part.type).catch(() => null),
-    searchWalmart(part.name).catch(() => null),
-  ])
-
-  const listings = [amazonResult, bbResult, walmartResult].filter(Boolean) as RetailerListing[]
-  const lowest = listings.length ? selectLowestPrice(listings) : null
-
+/** Build a PricedPart from the lowest listing found (or a search-link fallback). */
+function buildPricedPart(part: ExtractedPart, lowest: RetailerListing | null): PricedPart {
   if (!lowest) {
-    // Fallback: affiliate-tagged Best Buy search link so user can click through manually
     const bbTag = process.env.BESTBUY_AFFILIATE_TAG ?? ''
     const bbSearch = `https://www.bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(part.name)}`
     const fallbackUrl = bbTag
@@ -62,11 +51,60 @@ async function lookupPart(part: ExtractedPart, index: number): Promise<PricedPar
     lowestPrice: lowest.price,
     lowestRetailer: lowest.retailer,
     lowestAffiliateUrl: lowest.affiliateUrl,
-    // Color variants not used for PC components — cases are the exception
-    // but we keep schema null so front-end works without changes
     blackPrice: null, blackRetailer: null, blackAffiliateUrl: null,
     whitePrice: null, whiteRetailer: null, whiteAffiliateUrl: null,
   }
+}
+
+/**
+ * Look up the best retail price for a single part.
+ *
+ * Flow:
+ *   1. Check price_cache — if fresh, return immediately (no retailer API calls).
+ *   2. On cache miss, stagger (to respect Best Buy rate limits), fetch all
+ *      retailers in parallel, write results back to cache, then return lowest.
+ *
+ * @param missIndex - position among cache-miss parts, used for stagger timing
+ * @param memoryType - 'DDR4' or 'DDR5', passed to motherboard queries for
+ *   slot-compatibility filtering
+ */
+async function lookupPart(
+  part: ExtractedPart,
+  missIndex: number,
+  memoryType?: string
+): Promise<PricedPart> {
+  const cacheKey = makeCacheKey(part.type, part.name, memoryType)
+  const cached = await getCached(cacheKey)
+
+  if (cached !== null) {
+    // Cache hit — build the result from stored data, no API calls needed
+    const listings = Object.values(cached).filter(Boolean) as RetailerListing[]
+    return buildPricedPart(part, listings.length ? selectLowestPrice(listings) : null)
+  }
+
+  // Cache miss — stagger only among parts that actually need live fetches
+  await sleep(missIndex * 300)
+
+  const [amazonResult, bbResult, walmartResult, neweggResult] = await Promise.all([
+    searchAmazon(part.name).catch(() => null),
+    searchBestBuy(part.name, part.type, memoryType).catch(() => null),
+    searchWalmart(part.name, part.type, memoryType).catch(() => null),
+    searchNewegg(part.name, part.type, memoryType).catch(() => null),
+  ])
+
+  // Persist results (including nulls) so subsequent lookups are instant
+  const results: CachedResults = {
+    amazon: amazonResult,
+    bestbuy: bbResult,
+    walmart: walmartResult,
+    newegg: neweggResult,
+  }
+  await setCache(cacheKey, results)
+
+  const listings = [amazonResult, bbResult, walmartResult, neweggResult]
+    .filter(Boolean) as RetailerListing[]
+
+  return buildPricedPart(part, listings.length ? selectLowestPrice(listings) : null)
 }
 
 export async function POST(req: NextRequest) {
@@ -102,9 +140,32 @@ export async function POST(req: NextRequest) {
   if (pendingErr || !pending)
     return NextResponse.json({ error: 'Pending comparison not found' }, { status: 404 })
 
-  // Look up prices for all parts — staggered to avoid API rate limits
+  // Detect DDR generation from the memory part so motherboard cache keys and
+  // search queries are scoped to the correct slot type (DDR4 ≠ DDR5).
+  const memoryPart = confirmedParts.find(p => p.type === 'memory')
+  const memoryType = memoryPart?.name.match(/DDR([45])/i)?.[0]?.toUpperCase() as
+    | 'DDR4'
+    | 'DDR5'
+    | undefined
+
+  // Phase 1: read price_cache for all parts in parallel.
+  // Parts that already have fresh cached prices won't need any retailer calls.
+  const cacheKeys = confirmedParts.map(p => makeCacheKey(p.type, p.name, memoryType))
+  const cachedAll = await Promise.all(cacheKeys.map(k => getCached(k)))
+
+  // Phase 2: assign a stagger index only to parts that missed the cache,
+  // so we don't add unnecessary delay for parts we already have prices for.
+  let missCounter = 0
   const pricedParts = await Promise.all(
-    confirmedParts.map((part, i) => lookupPart(part, i))
+    confirmedParts.map(async (part, i) => {
+      if (cachedAll[i] !== null) {
+        // Fast path: serve from cache
+        const listings = Object.values(cachedAll[i]!).filter(Boolean) as RetailerListing[]
+        return buildPricedPart(part, listings.length ? selectLowestPrice(listings) : null)
+      }
+      // Slow path: live retailer fetch, staggered
+      return lookupPart(part, missCounter++, memoryType)
+    })
   )
 
   const slug = generateSlug()

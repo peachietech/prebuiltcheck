@@ -15,9 +15,11 @@ export function cleanPartName(text: string, type: PartType): string {
       break
     }
     case 'gpu': {
-      // Match full brand + model + VRAM, e.g. "NVIDIA GeForce RTX 4060 8GB"
+      // Match full brand + model + suffix + VRAM.
+      // Handles: "RTX 5060 12GB", "RX 9070 XT", "RX 9070XT 16GB",
+      //          "RTX 4070 Ti Super", "GTX 1660 Super 6GB"
       const m = firstLine.match(
-        /(?:NVIDIA GeForce\s+|AMD Radeon\s+)?(?:RTX|GTX|RX)\s+\d{4}(?:\s+Ti)?(?:\s+\d+GB)?/i
+        /(?:NVIDIA GeForce\s+|AMD Radeon\s+)?(?:RTX|GTX|RX)\s+\d{3,4}\s*(?:Ti\s+Super|Ti|Super|XT)?\s*(?:\d+\s*GB)?/i
       )
       if (m) return m[0].replace(/\s+/g, ' ').trim()
       break

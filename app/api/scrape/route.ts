@@ -6,6 +6,7 @@ import { detectRetailer, parsePrebuiltPage } from '@/lib/scraping/parsers'
 import { findCachedComparison } from '@/lib/scraping/dedup'
 import { createServerClient } from '@/lib/supabase'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { upsertKnownPrebuilt } from '@/lib/prebuilts'
 
 const MAX_URL_LENGTH = 2048
 const ALLOWED_PROTOCOLS = ['https:', 'http:']
@@ -94,6 +95,10 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (error) return NextResponse.json({ error: 'Failed to save pending comparison' }, { status: 500 })
+      // Catalog upsert — fire and forget, never blocks the response
+      if (parsed.prebuiltPrice) {
+        upsertKnownPrebuilt({ url, name: parsed.prebuiltName, retailer, price: parsed.prebuiltPrice, imageUrl: parsed.prebuiltImageUrl, parts: parsed.parts })
+      }
       return NextResponse.json({ pendingId: data.id })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error'
@@ -120,6 +125,9 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (error) return NextResponse.json({ error: 'Failed to save pending comparison' }, { status: 500 })
+      if (parsed.prebuiltPrice) {
+        upsertKnownPrebuilt({ url, name: parsed.prebuiltName, retailer, price: parsed.prebuiltPrice, imageUrl: parsed.prebuiltImageUrl, parts: parsed.parts })
+      }
       return NextResponse.json({ pendingId: data.id })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error'
@@ -154,6 +162,9 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: 'Failed to save pending comparison' }, { status: 500 })
+  }
+  if (parsed.prebuiltPrice) {
+    upsertKnownPrebuilt({ url, name: parsed.prebuiltName, retailer, price: parsed.prebuiltPrice, imageUrl: parsed.prebuiltImageUrl, parts: parsed.parts })
   }
 
   return NextResponse.json({ pendingId: data.id })

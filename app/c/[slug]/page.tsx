@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase'
 import { injectAffiliateTag } from '@/lib/affiliates'
+import { getGpuTier, getCpuTier, getSimilarPrebuilts } from '@/lib/prebuilts'
 import ComparisonClient from './ComparisonClient'
 import type { PricedPart } from '@/types'
 
@@ -41,6 +42,24 @@ export default async function ComparisonPage({ params }: { params: Promise<{ slu
     ? injectAffiliateTag(prebuiltUrl, comparison.retailer)
     : null
 
+  // Fetch similar cheaper prebuilts using GPU/CPU/RAM tiers from this comparison's parts
+  const gpuPart = parts.find(p => p.type === 'gpu')
+  const cpuPart = parts.find(p => p.type === 'cpu')
+  const memPart = parts.find(p => p.type === 'memory')
+
+  const gpuTier = gpuPart ? (getGpuTier(gpuPart.name) ?? null) : null
+  const cpuTier = cpuPart ? (getCpuTier(cpuPart.name) ?? null) : null
+  const ramGbMatch = memPart?.name.match(/(\d+(?:\.\d+)?)\s*(TB|GB)/i)
+  const ramGb = ramGbMatch
+    ? ramGbMatch[2].toUpperCase() === 'TB'
+      ? Math.round(parseFloat(ramGbMatch[1]) * 1024)
+      : Math.round(parseFloat(ramGbMatch[1]))
+    : null
+
+  const similarPrebuilts = prebuiltUrl
+    ? await getSimilarPrebuilts(prebuiltUrl, comparison.prebuilt_price, gpuTier, cpuTier, ramGb)
+    : []
+
   return (
     <main className="min-h-screen bg-[#0f0f13]">
       <nav className="flex items-center gap-3 px-6 py-4 border-b border-[#1e1e2e]">
@@ -57,6 +76,7 @@ export default async function ComparisonPage({ params }: { params: Promise<{ slu
           affiliatePrebuiltUrl={affiliatePrebuiltUrl}
           slug={comparison.slug}
           parts={parts}
+          similarPrebuilts={similarPrebuilts}
         />
       </div>
     </main>

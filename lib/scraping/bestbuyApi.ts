@@ -224,27 +224,30 @@ export async function fetchBestBuyProduct(url: string): Promise<ParsedListing> {
 function resolveMotherboardFromChipset(chipset: string): string | null {
   const c = chipset.toUpperCase().trim()
 
-  // Intel LGA1700 (12th/13th/14th gen): Z690/Z790/H670/H770/B660/B760
-  if (/^Z[679]\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
-  if (/^H[67]\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
-  if (/^B[67]\d0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
+  // ── Intel LGA1851 (Core Ultra 200 / Arrow Lake) ───────────────────────────
+  if (/^Z890/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
+  if (/^B860/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
+  if (/^H810/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
 
-  // Intel LGA1851 (Arrow Lake 15th gen): Z890/B860/H810
-  if (/^Z8[59]0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
-  if (/^B8[56]0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
-  if (/^H8[12]0/.test(c)) return `Intel ${c} ATX motherboard LGA1851`
+  // ── Intel LGA1700 (12th / 13th / 14th gen) ────────────────────────────────
+  // Z690 Z790  H670 H770  B660 B760  H610 H710
+  if (/^Z[679][07]0/.test(c)) return `Intel ${c} ATX motherboard LGA1700`
+  if (/^H[67][67]0/.test(c))  return `Intel ${c} ATX motherboard LGA1700`
+  if (/^B[67]60/.test(c))     return `Intel ${c} ATX motherboard LGA1700`
+  if (/^H[67]10/.test(c))     return `Intel ${c} ATX motherboard LGA1700`
 
-  // AMD AM5 (Ryzen 7000/9000): X670/X870/B650/B850
-  if (/^X[68]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
-  if (/^B[68]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
-  if (/^A[68]\d0/.test(c)) return `AMD ${c} ATX motherboard AM5`
+  // ── AMD AM5 (Ryzen 7000 / 9000) ───────────────────────────────────────────
+  // X670(E) X870(E)  B650(E) B850  A620
+  if (/^X[68][57]0E?/.test(c)) return `AMD ${c} ATX motherboard AM5`
+  if (/^B[68]50E?/.test(c))    return `AMD ${c} ATX motherboard AM5`
+  if (/^A620/.test(c))          return `AMD ${c} ATX motherboard AM5`
 
-  // AMD AM4 (Ryzen 5000 and older): X570/X470/B550/B450
-  if (/^X[45]\d0/.test(c)) return `AMD ${c} ATX motherboard AM4`
-  if (/^B[45]\d0/.test(c)) return `AMD ${c} ATX motherboard AM4`
-  if (/^A[45]\d0/.test(c)) return `AMD ${c} ATX motherboard AM4`
+  // ── AMD AM4 (Ryzen 5000 and older) ────────────────────────────────────────
+  // X570 X470  B550 B450  A520 A320
+  if (/^X[45][57]0/.test(c))   return `AMD ${c} ATX motherboard AM4`
+  if (/^B[45]50/.test(c))      return `AMD ${c} ATX motherboard AM4`
+  if (/^A[345][25]0/.test(c))  return `AMD ${c} ATX motherboard AM4`
 
-  // Unknown chipset — generic fallback
   return `${chipset} motherboard`
 }
 

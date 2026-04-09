@@ -7,16 +7,18 @@ const AFFILIATE_BASE = 'https://bestbuy.7tiv.net/c/'
 /**
  * Product name patterns to exclude — avoids prebuilt desktops, laptops,
  * car accessories, and other irrelevant results from component searches.
+ * NOTE: "all-in-one" is intentionally scoped to desktop/pc/computer so we
+ * do NOT accidentally exclude AIO liquid CPU coolers (e.g. "Kraken 240 All-in-One").
  */
 const EXCLUDE_PATTERN =
-  /gaming desktop|prebuilt|gaming pc tower|all-in-one|mini pc|dash kit|car |vehicle|laptop|notebook|sodimm/i
+  /gaming desktop|prebuilt|gaming pc tower|all-in-one (?:desktop|pc\b|computer)|mini pc|dash kit|car |vehicle|laptop|notebook|sodimm/i
 
 /**
  * Build a Best Buy search query optimised per part type.
- * Generic queries like "32GB DDR5 5200MHz" return car stereo kits.
- * Specific keywords steer Best Buy toward the correct component category.
+ * memoryType ('DDR4' | 'DDR5') is used for motherboard searches to ensure
+ * the returned board is compatible with the build's RAM generation.
  */
-function buildQuery(name: string, type: PartType): string {
+function buildQuery(name: string, type: PartType, memoryType?: string): string {
   switch (type) {
     case 'cpu': {
       // "Intel Core i7 14700F" → "Core i7-14700F processor"
@@ -24,9 +26,9 @@ function buildQuery(name: string, type: PartType): string {
       return model ? `${model[0]} processor` : `${name} processor`
     }
     case 'gpu': {
-      // "NVIDIA GeForce RTX 4060 8GB" → "RTX 4060 8GB graphics card"
-      const model = name.match(/(?:RTX|GTX|RX)\s+\d+(?:\s+Ti)?(?:\s+\d+GB)?/i)
-      return model ? `${model[0]} graphics card` : `${name} graphics card`
+      // Preserve suffixes: "RX 9070 XT", "RTX 4070 Ti Super", "RTX 5060 12GB"
+      const model = name.match(/(?:RTX|GTX|RX)\s+\d{3,4}\s*(?:Ti\s+Super|Ti|Super|XT)?\s*(?:\d+\s*GB)?/i)
+      return model ? `${model[0].trim()} graphics card` : `${name} graphics card`
     }
     case 'memory': {
       // "32GB DDR5 5200MHz" → "DDR5 32GB UDIMM" (UDIMM = desktop module, avoids laptop SODIMMs)
@@ -35,23 +37,25 @@ function buildQuery(name: string, type: PartType): string {
       return `${gen} ${size} UDIMM`
     }
     case 'storage': {
-      // "1TB NVMe SSD" → "1TB NVMe M.2 SSD internal"
+      // Use "M2" (no period) for Best Buy — the period in "M.2" can confuse
+      // Best Buy's query parser since their API uses dot notation internally.
       const size = name.match(/\d+(?:TB|GB)/i)?.[0] ?? '1TB'
-      const iface = /nvme/i.test(name) ? 'NVMe M.2' : 'SATA'
-      return `${size} ${iface} SSD internal`
+      return /nvme/i.test(name) ? `${size} NVMe M2 SSD` : `${size} SATA SSD`
     }
     case 'motherboard': {
-      // "Intel B760 ATX motherboard LGA1700" → "B760 Intel LGA1700 motherboard"
+      // Include DDR gen to ensure RAM compatibility (DDR4 ≠ DDR5 slots).
       const chipset = name.match(/\b[BZHXA]\d{3}[A-Z]*/i)?.[0]
       const socket = name.match(/LGA\d{4}|AM[45]/i)?.[0]
-      if (chipset && socket) return `${chipset} ${socket} motherboard`
-      if (chipset) return `${chipset} Intel motherboard`
+      const ddr = memoryType ?? name.match(/DDR[45]/i)?.[0] ?? ''
+      if (chipset && socket) return `${chipset} ${socket} ${ddr} motherboard`.replace(/\s+/g, ' ').trim()
+      if (chipset) return `${chipset} ${ddr} motherboard`.replace(/\s+/g, ' ').trim()
       return `${name.split(/\s+/).slice(0, 3).join(' ')} motherboard`
     }
     case 'psu': {
-      // "600W power supply" → "600W ATX power supply"
-      const w = name.match(/\d+W/i)?.[0] ?? '650W'
-      return `${w} ATX power supply`
+      // Drop "ATX" — Best Buy sometimes indexes as "power supply" without the form factor.
+      // Use watt value only so we cast a wider net.
+      const w = name.match(/(\d+)\s*W/i)?.[1] ?? '650'
+      return `${w} watt power supply`
     }
     case 'cooling': {
       if (/liquid|aio|water/i.test(name)) {
@@ -63,20 +67,41 @@ function buildQuery(name: string, type: PartType): string {
     case 'case': {
       if (/full.?tower/i.test(name)) return 'full tower ATX PC case'
       if (/mini.?itx/i.test(name)) return 'mini ITX PC case'
-      return 'ATX mid tower PC gaming case'
+      return 'ATX mid tower PC case'
     }
   }
 }
 
-export async function searchBestBuy(
-  name: string,
-  type?: PartType
-): Promise<RetailerListing | null> {
-  const apiKey = process.env.BESTBUY_API_KEY
-  if (!apiKey) return null
+/**
+ * Broader fallback query used when the primary search returns no products.
+ * Strips type-specific keywords down to the bare minimum so something always
+ * comes back for generic parts like cases, storage, and motherboards.
+ */
+function buildFallbackQuery(name: string, type: PartType): string {
+  switch (type) {
+    case 'storage': {
+      const size = name.match(/\d+(?:TB|GB)/i)?.[0] ?? '1TB'
+      return /nvme/i.test(name) ? `${size} M2 NVMe SSD` : `${size} SSD`
+    }
+    case 'motherboard': {
+      const chipset = name.match(/\b[BZHXA]\d{3}[A-Z]*/i)?.[0]
+      return chipset ? `${chipset} motherboard` : 'ATX motherboard'
+    }
+    case 'case':
+      return 'ATX PC case'
+    case 'cooling':
+      return 'CPU cooler'
+    case 'psu': {
+      const w = name.match(/\d+W/i)?.[0] ?? '650W'
+      return `${w} power supply`
+    }
+    default:
+      // For CPU/GPU/memory the primary query is already specific — use name
+      return name
+  }
+}
 
-  const query = type ? buildQuery(name, type) : name
-
+async function fetchProducts(query: string, apiKey: string) {
   const params = new URLSearchParams({
     apiKey,
     show: 'name,regularPrice,salePrice,sku,url',
@@ -85,22 +110,47 @@ export async function searchBestBuy(
   })
 
   const res = await fetch(`${API_BASE}(search=${encodeURIComponent(query)})?${params}`)
-  if (!res.ok) return null
+  if (!res.ok) return []
 
   const data = await res.json()
-  const products: Array<{
+  return (data.products ?? []) as Array<{
     name: string
     regularPrice: number
     salePrice: number | null
     sku: number
     url: string
-  }> = data.products ?? []
+  }>
+}
+
+export async function searchBestBuy(
+  name: string,
+  type?: PartType,
+  memoryType?: string
+): Promise<RetailerListing | null> {
+  const apiKey = process.env.BESTBUY_API_KEY
+  if (!apiKey) return null
+
+  const primaryQuery = type ? buildQuery(name, type, memoryType) : name
+  let products = await fetchProducts(primaryQuery, apiKey)
+
+  // If primary query found nothing, try a simpler fallback query
+  if (!products.length && type) {
+    products = await fetchProducts(buildFallbackQuery(name, type), apiKey)
+  }
 
   if (!products.length) return null
 
-  // Filter out prebuilts, laptops, and obviously irrelevant categories
+  // Prefer filtered results (exclude prebuilts/laptops), but fall back to the
+  // best-priced unfiltered result so we always return something useful.
   const filtered = products.filter(p => !EXCLUDE_PATTERN.test(p.name))
-  const product = filtered[0] ?? products[0]
+  const candidates = filtered.length ? filtered : products
+
+  // Pick the lowest-priced candidate rather than always taking index 0
+  const product = candidates.reduce((best, cur) => {
+    const bestPrice = best.salePrice ?? best.regularPrice ?? Infinity
+    const curPrice = cur.salePrice ?? cur.regularPrice ?? Infinity
+    return curPrice < bestPrice ? cur : best
+  })
 
   const price = product.salePrice ?? product.regularPrice
   if (!price) return null

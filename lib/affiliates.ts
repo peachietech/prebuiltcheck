@@ -21,8 +21,25 @@ export function injectAffiliateTag(url: string, retailer: string): string {
     }
 
     if (retailer === 'newegg') {
-      // Newegg uses Commission Junction — no tag injection without CJ link,
-      // just return the direct URL for now
+      // Newegg affiliate via Rakuten Advertising (LinkSynergy).
+      // NEWEGG_RAKUTEN_ID  = your Rakuten publisher id (the `id=` param in deep links)
+      // NEWEGG_RAKUTEN_MID = Newegg's merchant id on Rakuten (defaults to 45924)
+      const id = process.env.NEWEGG_RAKUTEN_ID
+      if (id) {
+        const mid = process.env.NEWEGG_RAKUTEN_MID ?? '45924'
+        return `https://click.linksynergy.com/deeplink?id=${encodeURIComponent(id)}&mid=${mid}&murl=${encodeURIComponent(url)}`
+      }
+      return url
+    }
+
+    if (retailer === 'ibuypower') {
+      // iBUYPOWER affiliate via Impact Radius.
+      // IBUYPOWER_AFFILIATE_ID = your Impact publisher id (e.g. 5433751)
+      // Deep-link format: https://ibuypower.sjv.io/c/{PUBLISHER_ID}/{encoded_url}
+      const id = process.env.IBUYPOWER_AFFILIATE_ID
+      if (id) {
+        return `https://ibuypower.sjv.io/c/${id}/${encodeURIComponent(url)}`
+      }
       return url
     }
 
