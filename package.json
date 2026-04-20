@@ -11,12 +11,15 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.86.1",
     "@supabase/supabase-js": "^2.102.1",
     "nanoid": "^5.1.7",
     "next": "16.2.2",
+    "node-html-parser": "^7.1.0",
     "paapi5-nodejs-sdk": "^1.1.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -4,9 +4,9 @@
 
 **Goal:** Build the core PrebuiltCheck tool — user pastes a prebuilt PC URL, the site scrapes and extracts parts, user confirms, site queries retailer APIs for lowest prices, and renders a shareable comparison page with affiliate links.
 
-**Architecture:** Next.js 14 App Router on Vercel with API routes handling scraping (ScrapingBee), retailer price lookups (Amazon PA API, Best Buy API, Walmart API), and comparison data stored in Supabase PostgreSQL. Color filter and Windows license toggle are client-side state. Newegg added in Plan 2 (datafeed import). Share links use 8-character random slugs with 30-day TTL.
+**Architecture:** Next.js 16 App Router on Vercel with API routes handling scraping (ScrapingBee), retailer price lookups (Amazon PA API, Best Buy API, Walmart API), and comparison data stored in Supabase PostgreSQL. Color filter and Windows license toggle are client-side state. Newegg added in Plan 2 (datafeed import). Share links use 8-character random slugs with 30-day TTL.
 
-**Tech Stack:** Next.js 14, TypeScript, Tailwind CSS, Supabase (`@supabase/supabase-js`), ScrapingBee REST API, Amazon PA API 5.0 (`paapi5-nodejs-sdk`), Best Buy Products API, Walmart Open API, Vitest, React Testing Library, `nanoid`
+**Tech Stack:** Next.js 16, TypeScript, Tailwind CSS v4 (CSS-first config, no tailwind.config.ts), Supabase (`@supabase/supabase-js`), ScrapingBee REST API, Amazon PA API 5.0 (`paapi5-nodejs-sdk`), Best Buy Products API, Walmart Open API, Vitest, React Testing Library, `nanoid`
 
 ---
 
@@ -60,7 +60,7 @@ prebuilt-site/
 ## Task 1: Project Scaffold
 
 **Files:**
-- Create: `package.json`, `next.config.ts`, `tailwind.config.ts`, `tsconfig.json`, `vitest.config.ts`, `.env.local.example`
+- Create: `package.json`, `next.config.ts`, `tsconfig.json`, `vitest.config.ts`, `.env.local.example` (Note: Tailwind v4 has no `tailwind.config.ts` — config lives in `app/globals.css`)
 
 - [ ] **Step 1: Bootstrap Next.js project**
 
@@ -69,7 +69,7 @@ cd "C:/Users/peachie/OneDrive/Documents/prebuilt site"
 npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir no --import-alias "@/*"
 ```
 
-Expected: Next.js 14 project created with TypeScript, Tailwind, App Router.
+Expected: Next.js 16 project created with TypeScript, Tailwind v4, App Router.
 
 - [ ] **Step 2: Install dependencies**
 
